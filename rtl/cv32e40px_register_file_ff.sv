@@ -28,12 +28,13 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 module cv32e40px_register_file #(
-    parameter ADDR_WIDTH = 5,
-    parameter DATA_WIDTH = 32,
-    parameter FPU        = 0,
-    parameter ZFINX      = 0,
-    parameter COREV_X_IF = 0,
-    parameter X_DUALREAD = 0
+    parameter ADDR_WIDTH  = 5,
+    parameter DATA_WIDTH  = 32,
+    parameter FPU         = 0,
+    parameter ZFINX       = 0,
+    parameter COREV_X_IF  = 0,
+    parameter X_DUALREAD  = 0,
+    parameter X_DUALWRITE = 0
 ) (
     // Clock and Reset
     input logic clk,
@@ -61,9 +62,9 @@ module cv32e40px_register_file #(
     input logic                  we_a_i,
 
     // Write port W2
-    input logic [ADDR_WIDTH-1:0] waddr_b_i,
-    input logic [DATA_WIDTH-1:0] wdata_b_i,
-    input logic                  we_b_i
+    input logic [ADDR_WIDTH-1:0]                 waddr_b_i,
+    input logic [ X_DUALWRITE:0][DATA_WIDTH-1:0] wdata_b_i,
+    input logic [ X_DUALWRITE:0]                 we_b_i
 );
 
   // number of integer registers
@@ -142,7 +143,18 @@ module cv32e40px_register_file #(
   generate
     for (gidx = 0; gidx < NUM_TOT_WORDS; gidx++) begin : gen_we_decoder
       assign we_a_dec[gidx] = (waddr_a == gidx) ? we_a_i : 1'b0;
-      assign we_b_dec[gidx] = (waddr_b == gidx) ? we_b_i : 1'b0;
+      //[dual write] new logic for port b due to  dual write addition
+      if (X_DUALWRITE == 1) begin
+        if (gidx % 2 == 0) begin
+          // access to even indexed registers is the same 
+          assign we_b_dec[gidx] = (waddr_b == gidx) ? we_b_i[0] : 1'b0;
+        end else begin
+          // odd registers can be written directly or indirectly through dualwrite
+          assign we_b_dec[gidx] = (waddr_b == (gidx - 1)) ? we_b_i[1] : (waddr_b == gidx)? we_b_i[0] : 1'b0;
+        end
+      end else begin
+        assign we_b_dec[gidx] = (waddr_b == gidx) ? we_b_i[0] : 1'b0;
+      end
     end
   endgenerate
 
@@ -170,8 +182,19 @@ module cv32e40px_register_file #(
         if (rst_n == 1'b0) begin
           mem[i] <= 32'b0;
         end else begin
-          if (we_b_dec[i] == 1'b1) mem[i] <= wdata_b_i;
-          else if (we_a_dec[i] == 1'b1) mem[i] <= wdata_a_i;
+          if (X_DUALWRITE == 0) begin
+            if (we_b_dec[i] == 1'b1) mem[i] <= wdata_b_i;
+            else if (we_a_dec[i] == 1'b1) mem[i] <= wdata_a_i;
+          end else begin
+            // [dualwrite] write wdata, if adjacent bit is set then write wdata[1]
+            if (i % 2 == 0) begin
+              if (we_b_dec[i] == 1'b1 && we_b_dec[i+1] == 1'b1) begin
+                mem[i]   <= wdata_b_i[0];
+                mem[i+1] <= wdata_b_i[1];
+              end else if (we_b_dec[i] == 1'b1) mem[i] <= wdata_b_i;
+              else if (we_a_dec[i] == 1'b1) mem[i] <= wdata_a_i;
+            end
+          end
         end
       end
 

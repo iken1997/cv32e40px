@@ -35,6 +35,7 @@ module cv32e40px_x_disp
     input  logic       x_issue_resp_writeback_i,
 
     input  logic [              2:0] x_issue_resp_dualread_i,
+    input  logic                     x_issue_resp_dualwrite_i,
     input  logic                     x_issue_resp_loadstore_i,  // unused
     output logic [RF_READ_PORTS-1:0] x_issue_req_rs_valid_o,
     output logic [              3:0] x_issue_req_id_o,
@@ -44,27 +45,27 @@ module cv32e40px_x_disp
     // commit interface
     output logic       x_commit_valid_o,
     output logic [3:0] x_commit_id_o,
-    output logic       x_commit_commit_kill,  // hardwired to 0
+    output logic       x_commit_commit_kill, // hardwired to 0
 
     // memory (request/response) interface
     input  logic       x_mem_valid_i,
     output logic       x_mem_ready_o,
-    input  logic [1:0] x_mem_req_mode_i,  // unused
-    input  logic       x_mem_req_spec_i,  // unused
-    input  logic       x_mem_req_last_i,  // unused
-    output logic       x_mem_resp_exc_o,  // hardwired to 0
+    input  logic [1:0] x_mem_req_mode_i,      // unused
+    input  logic       x_mem_req_spec_i,      // unused
+    input  logic       x_mem_req_last_i,      // unused
+    output logic       x_mem_resp_exc_o,      // hardwired to 0
     output logic [5:0] x_mem_resp_exccode_o,  // hardwired to 0
-    output logic       x_mem_resp_dbg_o,  // hardwired to 0
+    output logic       x_mem_resp_dbg_o,      // hardwired to 0
 
     // memory result interface
     output logic x_mem_result_valid_o,
-    output logic x_mem_result_err_o,  // hardwired to 0
+    output logic x_mem_result_err_o,    // hardwired to 0
 
     // result interface
-    input  logic       x_result_valid_i,
-    output logic       x_result_ready_o,  // hardwired to 1
-    input  logic [4:0] x_result_rd_i,
-    input  logic       x_result_we_i,
+    input  logic                      x_result_valid_i,
+    output logic                      x_result_ready_o,  // hardwired to 1
+    input  logic [               4:0] x_result_rd_i,
+    input  logic [X_DUALWRITE:0] x_result_we_i,     // [dual write] un bit per ogni registro?
 
     // scoreboard, dependency check, stall, forwarding
     input  logic [              4:0]      waddr_id_i,
@@ -139,6 +140,9 @@ module cv32e40px_x_disp
       assign x_issue_req_ecs_valid = 1'b1;  // extension context status is not implemented in cv32e40px
     end
   endgenerate
+
+
+
   // commit interface
   assign x_commit_valid_o = x_issue_valid_o;
   assign x_commit_id_o = id_q;
@@ -225,16 +229,29 @@ module cv32e40px_x_disp
   end
 
   // scoreboard update
-  always_comb begin
-    scoreboard_d = scoreboard_q;
-    if (x_issue_resp_writeback_i & x_issue_valid_o & x_issue_ready_i
+  generate
+    always_comb begin
+      scoreboard_d = scoreboard_q;
+      if (x_issue_resp_writeback_i & x_issue_valid_o & x_issue_ready_i
         & ~((waddr_id_i == x_result_rd_i) & x_result_valid_i & (x_result_rd_i != '0))) begin
-      scoreboard_d[waddr_id_i] = 1'b1;
+        scoreboard_d[waddr_id_i] = 1'b1;
+        if (X_DUALWRITE == 1) begin
+          if (x_issue_resp_dualwrite_i == 1'b1) begin
+            scoreboard_d[waddr_id_i|5'b00001] = 1'b1;
+          end
+        end
+      end
+      if (x_result_valid_i & x_result_we_i[0]) begin
+        scoreboard_d[x_result_rd_i] = 1'b0;
+        if (X_DUALWRITE == 1) begin
+          if (x_result_we_i[1]) begin
+            scoreboard_d[x_result_rd_i|5'b00001] = 1'b0;
+            scoreboard_d[x_result_rd_i] = 1'b0;
+          end
+        end
+      end
     end
-    if (x_result_valid_i & x_result_we_i) begin
-      scoreboard_d[x_result_rd_i] = 1'b0;
-    end
-  end
+  endgenerate
 
   // status signal that indicates if an instruction has already been offloaded
   always_comb begin
