@@ -679,7 +679,7 @@ module cv32e40px_id_stage
     // Operand a forwarding mux
     always_comb begin : operand_a_fw_mux
       case (operand_a_fw_mux_sel)
-        SEL_FW_EX:   operand_a_fw_id = regfile_alu_wdata_fw_i;
+        SEL_FW_EX:   operand_a_fw_id = regfile_alu_wdata_fw_i[0];
         SEL_FW_WB:   operand_a_fw_id = regfile_wdata_wb_i;
         SEL_REGFILE: operand_a_fw_id = regfile_data_ra_id[0];
         default:     operand_a_fw_id = regfile_data_ra_id[0];
@@ -748,7 +748,7 @@ module cv32e40px_id_stage
       // Operand b forwarding mux
       always_comb begin : operand_b_fw_mux
         case (operand_b_fw_mux_sel)
-          SEL_FW_EX:   operand_b_fw_id = regfile_alu_wdata_fw_i;
+          SEL_FW_EX:   operand_b_fw_id = regfile_alu_wdata_fw_i[0];
           SEL_FW_WB:   operand_b_fw_id = regfile_wdata_wb_i;
           SEL_REGFILE: operand_b_fw_id = regfile_data_rb_id;
           default:     operand_b_fw_id = regfile_data_rb_id;
@@ -759,7 +759,7 @@ module cv32e40px_id_stage
       // Operand b forwarding mux
       always_comb begin : operand_b_fw_mux
         case (operand_b_fw_mux_sel)
-          SEL_FW_EX:   operand_b_fw_id = regfile_alu_wdata_fw_i;
+          SEL_FW_EX:   operand_b_fw_id = regfile_alu_wdata_fw_i[0];
           SEL_FW_WB:   operand_b_fw_id = regfile_wdata_wb_i;
           SEL_REGFILE: operand_b_fw_id = regfile_data_rb_id[0];
           default:     operand_b_fw_id = regfile_data_rb_id[0];
@@ -808,7 +808,7 @@ module cv32e40px_id_stage
       // Operand c forwarding mux
       always_comb begin : operand_c_fw_mux
         case (operand_c_fw_mux_sel)
-          SEL_FW_EX:   operand_c_fw_id = regfile_alu_wdata_fw_i;
+          SEL_FW_EX:   operand_c_fw_id = regfile_alu_wdata_fw_i[0];
           SEL_FW_WB:   operand_c_fw_id = regfile_wdata_wb_i;
           SEL_REGFILE: operand_c_fw_id = regfile_data_rc_id;
           default:     operand_c_fw_id = regfile_data_rc_id;
@@ -819,7 +819,7 @@ module cv32e40px_id_stage
       // Operand c forwarding mux
       always_comb begin : operand_c_fw_mux
         case (operand_c_fw_mux_sel)
-          SEL_FW_EX:   operand_c_fw_id = regfile_alu_wdata_fw_i;
+          SEL_FW_EX:   operand_c_fw_id = regfile_alu_wdata_fw_i[0];
           SEL_FW_WB:   operand_c_fw_id = regfile_wdata_wb_i;
           SEL_REGFILE: operand_c_fw_id = regfile_data_rc_id[0];
           default:     operand_c_fw_id = regfile_data_rc_id[0];
@@ -1086,6 +1086,7 @@ module cv32e40px_id_stage
           .x_issue_ready_i         (x_issue_ready_i),
           .x_issue_resp_writeback_i(x_issue_resp_i.writeback),
           .x_issue_resp_dualread_i (x_issue_resp_i.dualread),
+          .x_issue_resp_dualwrite_i (x_issue_resp_i.dualwrite),
           .x_issue_resp_accept_i   (x_issue_resp_i.accept),
           .x_issue_resp_loadstore_i(x_issue_resp_i.loadstore),
           .x_issue_req_rs_valid_o  (x_issue_req_o.rs_valid),

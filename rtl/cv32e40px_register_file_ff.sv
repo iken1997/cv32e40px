@@ -177,25 +177,50 @@ module cv32e40px_register_file #(
 
     // loop from 1 to NUM_WORDS-1 as R0 is nil
     for (i = 1; i < NUM_WORDS; i++) begin : gen_rf
-
-      always_ff @(posedge clk, negedge rst_n) begin : register_write_behavioral
-        if (rst_n == 1'b0) begin
-          mem[i] <= 32'b0;
-        end else begin
-          if (X_DUALWRITE == 0) begin
-            if (we_b_dec[i] == 1'b1) mem[i] <= wdata_b_i;
-            else if (we_a_dec[i] == 1'b1) mem[i] <= wdata_a_i;
-          end else begin
-            // [dualwrite] write wdata, if adjacent bit is set then write wdata[1]
-            if (i % 2 == 0) begin
-              if (we_b_dec[i] == 1'b1 && we_b_dec[i+1] == 1'b1) begin
+      if (X_DUALWRITE != 0) begin
+        if (i % 2 == 0) begin
+          // [dual write] in even indexes check next bit of decoder b, choose data to write accordingly
+          always_ff @(posedge clk, negedge rst_n) begin : register_dualwrite_behavioral
+            if (rst_n == 1'b0) begin
+              mem[i]   <= 32'b0;
+              mem[i+1] <= 32'b0;
+            end else begin
+              if (we_b_dec[i] == 1'b1 & we_b_dec[i+1] == 1'b1) begin  //write pair
                 mem[i]   <= wdata_b_i[0];
                 mem[i+1] <= wdata_b_i[1];
-              end else if (we_b_dec[i] == 1'b1) mem[i] <= wdata_b_i;
+              end else if (we_b_dec[i] == 1'b1) begin
+                mem[i] <= wdata_b_i[0];
+              end else if (we_b_dec[i+1] == 1'b1) begin
+                mem[i+1] <= wdata_b_i[0];
+              end else if (we_a_dec[i] == 1'b1) begin
+                mem[i] <= wdata_a_i;
+              end else if (we_a_dec[i+1] == 1'b1) begin
+                mem[i+1] <= wdata_a_i;
+              end
+            end
+          end
+        end else if (i == 1) begin  // [dualwrite] case for register 1
+          always_ff @(posedge clk, negedge rst_n) begin : register_write_behavioral
+            if (rst_n == 1'b0) begin
+              mem[i] <= 32'b0;
+            end else begin
+              if (we_b_dec[i] == 1'b1) mem[i] <= wdata_b_i[0];
               else if (we_a_dec[i] == 1'b1) mem[i] <= wdata_a_i;
             end
           end
         end
+
+      end else begin
+
+        always_ff @(posedge clk, negedge rst_n) begin : register_write_behavioral
+          if (rst_n == 1'b0) begin
+            mem[i] <= 32'b0;
+          end else begin
+            if (we_b_dec[i] == 1'b1) mem[i] <= wdata_b_i;
+            else if (we_a_dec[i] == 1'b1) mem[i] <= wdata_a_i;
+          end
+        end
+
       end
 
     end
