@@ -244,7 +244,6 @@ module cv32e40px_x_disp
       always_comb begin : dualwrite_scoreboard
         scoreboard_d = scoreboard_q;
         // [dual write] if the coprocessor will perform a dualwrite, then upload scoreboard for second register
-        // When receiving result, check the second bit of we to clear the second register
         if (x_issue_resp_writeback_i & x_issue_valid_o & x_issue_ready_i
         & ~((waddr_id_i == x_result_rd_i) & x_result_valid_i & (x_result_rd_i != '0))) begin
           scoreboard_d[waddr_id_i] = 1'b1;
@@ -252,6 +251,7 @@ module cv32e40px_x_disp
             scoreboard_d[waddr_id_i|5'b00001] = 1'b1;
           end
         end
+        // When receiving result, check the second bit of we to clear the second register
         if (x_result_valid_i & x_result_we_i[0]) begin
           scoreboard_d[x_result_rd_i] = 1'b0;
           if (x_result_we_i[1]) begin
