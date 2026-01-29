@@ -1214,7 +1214,7 @@ module cv32e40px_id_stage
 
         if (!rst_n) dw_pending <= 0;
         else begin
-          if (x_issue_resp_i.dualwrite & x_issue_valid_o & x_issue_resp_i.dualwrite) begin
+          if (x_issue_resp_i.dualwrite & x_issue_valid_o) begin
             dw_pending <= 1;
           end else if (x_result_valid_i & x_result_ready_o & (x_result_i.we[1])) begin
             dw_pending <= 0;
@@ -1940,11 +1940,13 @@ module cv32e40px_id_stage
           data_load_event_ex_o <= 1'b0;
         end
 
-      end else if (csr_access_ex_o) begin
+      end else if (csr_access_ex_o & !x_result_valid_assigned_o) begin
         //In the EX stage there was a CSR access, to avoid multiple
         //writes to the RF, disable regfile_alu_we_ex_o.
         //Not doing it can overwrite the RF file with the currennt CSR value rather than the old one
         regfile_alu_we_ex_o <= 1'b0;
+        //If xif is writing don't disable
+
       end
     end
   end

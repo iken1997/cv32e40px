@@ -179,17 +179,23 @@ module cv32e40px_register_file #(
         if (rst_n == 1'b0) begin
           mem[i] <= 32'b0;
         end else begin
-          if (we_b_dec[i] == 1'b1) begin
-            mem[i] <= wdata_b_i[0];
-            if (dualwrite == 1'b1) begin
-              mem[i+1] <= wdata_b_i[1];
-            end
-          end else if (we_a_dec[i] == 1'b1) mem[i] <= wdata_a_i;
+          if ((i % 2 == 0)) begin // even address write content of port b[0]
+            if (we_b_dec[i] == 1'b1)  mem[i]   <= wdata_b_i[0];
+            else if (we_a_dec[i] == 1'b1)
+              mem[i]                           <= wdata_a_i;
+          end else begin // odd address: if dualwrite is set,check correspondent odd addr dec, and write content of port b[1], else write content of port b[0] to even address
+            if (dualwrite & we_b_dec[i-1] == 1'b1)
+              mem[i]                           <= wdata_b_i[1];
+            else if (we_b_dec[i] == 1'b1)
+              mem[i]                           <= wdata_b_i[0];
+            else if (we_a_dec[i] == 1'b1)
+              mem[i]                           <= wdata_a_i;
+          end
         end
       end
 
     end
-
+    
     if (FPU == 1 && ZFINX == 0) begin : gen_mem_fp_write
       // Floating point registers
       for (l = 0; l < NUM_FP_WORDS; l++) begin
