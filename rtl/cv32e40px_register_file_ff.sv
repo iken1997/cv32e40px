@@ -28,12 +28,13 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 module cv32e40px_register_file #(
-    parameter ADDR_WIDTH = 5,
-    parameter DATA_WIDTH = 32,
-    parameter FPU        = 0,
-    parameter ZFINX      = 0,
-    parameter COREV_X_IF = 0,
-    parameter X_DUALREAD = 0
+    parameter ADDR_WIDTH  = 5,
+    parameter DATA_WIDTH  = 32,
+    parameter FPU         = 0,
+    parameter ZFINX       = 0,
+    parameter COREV_X_IF  = 0,
+    parameter X_DUALREAD  = 0,
+    parameter X_DUALWRITE = 0
 ) (
     // Clock and Reset
     input logic clk,
@@ -42,6 +43,7 @@ module cv32e40px_register_file #(
     input logic scan_cg_en_i,
 
     input logic [2:0] dualread_i,
+    input logic dualwrite_i,
 
     //Read port R1
     input logic [ADDR_WIDTH-1:0] raddr_a_i,
@@ -61,9 +63,9 @@ module cv32e40px_register_file #(
     input logic                  we_a_i,
 
     // Write port W2
-    input logic [ADDR_WIDTH-1:0] waddr_b_i,
-    input logic [DATA_WIDTH-1:0] wdata_b_i,
-    input logic                  we_b_i
+    input logic [ADDR_WIDTH-1:0]                 waddr_b_i,
+    input logic [ X_DUALWRITE:0][DATA_WIDTH-1:0] wdata_b_i,
+    input logic [ X_DUALWRITE:0]                 we_b_i
 );
 
   // number of integer registers
@@ -85,6 +87,11 @@ module cv32e40px_register_file #(
   // write enable signals for all registers
   logic [NUM_TOT_WORDS-1:0]                 we_a_dec;
   logic [NUM_TOT_WORDS-1:0]                 we_b_dec;
+
+  // dualwrite flag
+  logic                                     dualwrite;
+
+
 
 
   //-----------------------------------------------------------------------------
@@ -135,14 +142,16 @@ module cv32e40px_register_file #(
   //-----------------------------------------------------------------------------
 
   // Mask top bit of write address to disable fp regfile
-  assign waddr_a = waddr_a_i;
-  assign waddr_b = waddr_b_i;
+  assign waddr_a   = waddr_a_i;
+  assign waddr_b   = waddr_b_i;
+  // if the address is even, and both write enable signals are asserter, a dual write has to be performed.
+  assign dualwrite = (X_DUALWRITE != 0) ? !waddr_b_i[0] & (&we_b_i) & dualwrite_i : 1'b0;
 
   genvar gidx;
   generate
     for (gidx = 0; gidx < NUM_TOT_WORDS; gidx++) begin : gen_we_decoder
       assign we_a_dec[gidx] = (waddr_a == gidx) ? we_a_i : 1'b0;
-      assign we_b_dec[gidx] = (waddr_b == gidx) ? we_b_i : 1'b0;
+      assign we_b_dec[gidx] = (waddr_b == gidx) ? we_b_i[0] : 1'b0;
     end
   endgenerate
 
@@ -170,8 +179,12 @@ module cv32e40px_register_file #(
         if (rst_n == 1'b0) begin
           mem[i] <= 32'b0;
         end else begin
-          if (we_b_dec[i] == 1'b1) mem[i] <= wdata_b_i;
-          else if (we_a_dec[i] == 1'b1) mem[i] <= wdata_a_i;
+          if (we_b_dec[i] == 1'b1) begin
+            mem[i] <= wdata_b_i[0];
+            if (dualwrite == 1'b1) begin
+              mem[i+1] <= wdata_b_i[1];
+            end
+          end else if (we_a_dec[i] == 1'b1) mem[i] <= wdata_a_i;
         end
       end
 

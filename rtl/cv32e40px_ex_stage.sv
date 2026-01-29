@@ -106,16 +106,16 @@ module cv32e40px_ex_stage
     output logic            apu_write_dep_o,
 
     // X-Interface
-    input  logic        x_result_valid_assigned_i,
-    input  logic [ 4:0] x_result_rd_i,
-    input  logic [31:0] x_result_data_i,
-    input  logic        x_result_we_i,
-    input  logic        x_mem_instr_i,
-    input  logic [ 3:0] x_mem_id_ex_i,
-    output logic [31:0] x_mem_result_rdata_o,
-    output logic        x_mem_instr_wb_o,
-    output logic [ 3:0] x_mem_result_id_o,
-    output logic [31:0] result_fw_to_x_o,
+    input  logic                       x_result_valid_assigned_i,
+    input  logic [          4:0]       x_result_rd_i,
+    input  logic [X_DUALWRITE:0][31:0] x_result_data_i,
+    input  logic [X_DUALWRITE:0]       x_result_we_i,
+    input  logic                       x_mem_instr_i,
+    input  logic [          3:0]       x_mem_id_ex_i,
+    output logic [         31:0]       x_mem_result_rdata_o,
+    output logic                       x_mem_instr_wb_o,
+    output logic [          3:0]       x_mem_result_id_o,
+    output logic [         31:0]       result_fw_to_x_o,
 
 
     output logic apu_perf_type_o,
@@ -159,10 +159,10 @@ module cv32e40px_ex_stage
     output logic [31:0] regfile_wdata_wb_o,
 
     // Forwarding ports : to ID stage
-    output logic [ 5:0] regfile_alu_waddr_fw_o,
-    output logic        regfile_alu_we_fw_o,
-    output logic        regfile_alu_we_fw_power_o,
-    output logic [31:0] regfile_alu_wdata_fw_o,  // forward to RF and ID/EX pipe, ALU & MUL
+    output logic [5:0] regfile_alu_waddr_fw_o,
+    output logic regfile_alu_we_fw_o,
+    output logic [X_DUALWRITE:0] regfile_alu_we_fw_power_o,
+    output logic [X_DUALWRITE:0][31:0] regfile_alu_wdata_fw_o,  // forward to RF and ID/EX pipe, ALU & MUL
 
     // To IF: Jump and branch target and decision
     output logic [31:0] jump_target_o,
@@ -175,7 +175,7 @@ module cv32e40px_ex_stage
 
     output logic ex_ready_o,  // EX stage ready for new data
     output logic ex_valid_o,  // EX stage gets new data
-    input  logic wb_ready_i  // WB stage ready for new data
+    input  logic wb_ready_i   // WB stage ready for new data
 );
 
   logic [                31:0] alu_result;
@@ -186,6 +186,7 @@ module cv32e40px_ex_stage
   logic [                 5:0] regfile_waddr_lsu;
 
   logic                        wb_contention;
+  logic                        wb_contention_xif;
   logic                        wb_contention_lsu;
 
   logic                        alu_ready;
@@ -208,53 +209,114 @@ module cv32e40px_ex_stage
   logic [APU_NUSFLAGS_CPU-1:0] apu_flags_q;
 
   // ALU write port mux
-  always_comb begin
-    regfile_alu_wdata_fw_o    = '0;
-    regfile_alu_waddr_fw_o    = '0;
-    regfile_alu_we_fw_o       = '0;
-    wb_contention             = 1'b0;
-    result_fw_to_x_o          = '0;
-    regfile_alu_we_fw_power_o = 1'b0;
-    if (x_result_valid_assigned_i & x_result_we_i & (x_result_rd_i != 5'b00000)) begin
-      regfile_alu_we_fw_o       = 1'b1;
-      regfile_alu_we_fw_power_o = 1'b1;
-      regfile_alu_waddr_fw_o    = {1'b0, x_result_rd_i};
-      regfile_alu_wdata_fw_o    = x_result_data_i;
-      if (regfile_alu_we_i) begin
-        wb_contention = 1'b1;
-      end
-    end else begin
-      // APU single cycle operations, and multicycle operations (>2cycles) are written back on ALU port
-      if (apu_valid & (apu_singlecycle | apu_multicycle)) begin
-        regfile_alu_we_fw_o       = 1'b1;
-        regfile_alu_we_fw_power_o = 1'b1;
-        regfile_alu_waddr_fw_o    = apu_waddr;
-        regfile_alu_wdata_fw_o    = apu_result;
-        result_fw_to_x_o          = apu_result;
-        if (regfile_alu_we_i & ~apu_en_i) begin
-          wb_contention = 1'b1;
+  generate
+
+    if (X_DUALWRITE != 0) begin
+
+      always_comb begin : dual_write_alu_write_port_mux
+        regfile_alu_wdata_fw_o    = '0;
+        regfile_alu_waddr_fw_o    = '0;
+        regfile_alu_we_fw_o       = '0;
+        wb_contention             = 1'b0;
+        result_fw_to_x_o          = '0;
+        regfile_alu_we_fw_power_o = '0;
+        //assuming that dualwrite happens when both we bits are active and it cannot write only rd+1
+        if (x_result_we_i[0] & x_result_valid_assigned_i & (x_result_rd_i != 5'b00000)) begin
+          regfile_alu_we_fw_o       = 1'b1;
+          regfile_alu_we_fw_power_o = (x_result_we_i);
+          regfile_alu_waddr_fw_o    = {1'b0, x_result_rd_i};
+          regfile_alu_wdata_fw_o    = x_result_data_i;
+          if (regfile_alu_we_i) begin
+            wb_contention = 1'b1;
+          end
+        end else begin
+          // APU single cycle operations, and multicycle operations (>2cycles) are written back on ALU port
+          if (apu_valid & (apu_singlecycle | apu_multicycle)) begin
+            regfile_alu_we_fw_o       = 1'b1;
+            regfile_alu_we_fw_power_o = 2'b01;
+            regfile_alu_waddr_fw_o    = apu_waddr;
+            regfile_alu_wdata_fw_o[0] = apu_result;
+            result_fw_to_x_o          = apu_result;
+            if (regfile_alu_we_i & ~apu_en_i) begin
+              wb_contention = 1'b1;
+            end
+          end else begin
+            regfile_alu_we_fw_o = regfile_alu_we_i & ~apu_en_i;  // private fpu incomplete?
+            regfile_alu_we_fw_power_o = {
+              1'b0,
+              !COREV_PULP ? regfile_alu_we_i & ~apu_en_i :
+                                                regfile_alu_we_i & ~apu_en_i &
+                                                mult_ready & alu_ready & lsu_ready_ex_i
+            };
+            regfile_alu_waddr_fw_o = regfile_alu_waddr_i;
+            if (alu_en_i) begin
+              regfile_alu_wdata_fw_o[0] = alu_result;
+              result_fw_to_x_o          = alu_result;
+            end
+            if (mult_en_i) begin
+              regfile_alu_wdata_fw_o[0] = mult_result;
+              result_fw_to_x_o          = mult_result;
+            end
+            if (csr_access_i) begin
+              regfile_alu_wdata_fw_o[0] = csr_rdata_i;
+              result_fw_to_x_o          = csr_rdata_i;
+            end
+          end
         end
-      end else begin
-        regfile_alu_we_fw_o = regfile_alu_we_i & ~apu_en_i;  // private fpu incomplete?
-        regfile_alu_we_fw_power_o = !COREV_PULP ? regfile_alu_we_i & ~apu_en_i :
+      end
+
+    end else begin
+
+      always_comb begin
+        regfile_alu_wdata_fw_o    = '0;
+        regfile_alu_waddr_fw_o    = '0;
+        regfile_alu_we_fw_o       = '0;
+        wb_contention             = 1'b0;
+        result_fw_to_x_o          = '0;
+        regfile_alu_we_fw_power_o = 1'b0;
+        if (x_result_valid_assigned_i & x_result_we_i & (x_result_rd_i != 5'b00000)) begin
+          regfile_alu_we_fw_o       = 1'b1;
+          regfile_alu_we_fw_power_o = 1'b1;
+          regfile_alu_waddr_fw_o    = {1'b0, x_result_rd_i};
+          regfile_alu_wdata_fw_o    = x_result_data_i;
+          if (regfile_alu_we_i) begin
+            wb_contention = 1'b1;
+          end
+        end else begin
+          // APU single cycle operations, and multicycle operations (>2cycles) are written back on ALU port
+          if (apu_valid & (apu_singlecycle | apu_multicycle)) begin
+            regfile_alu_we_fw_o       = 1'b1;
+            regfile_alu_we_fw_power_o = 1'b1;
+            regfile_alu_waddr_fw_o    = apu_waddr;
+            regfile_alu_wdata_fw_o    = apu_result;
+            result_fw_to_x_o          = apu_result;
+            if (regfile_alu_we_i & ~apu_en_i) begin
+              wb_contention = 1'b1;
+            end
+          end else begin
+            regfile_alu_we_fw_o = regfile_alu_we_i & ~apu_en_i;  // private fpu incomplete?
+            regfile_alu_we_fw_power_o = !COREV_PULP ? regfile_alu_we_i & ~apu_en_i :
                                                 regfile_alu_we_i & ~apu_en_i &
                                                 mult_ready & alu_ready & lsu_ready_ex_i;
-        regfile_alu_waddr_fw_o = regfile_alu_waddr_i;
-        if (alu_en_i) begin
-          regfile_alu_wdata_fw_o = alu_result;
-          result_fw_to_x_o       = alu_result;
-        end
-        if (mult_en_i) begin
-          regfile_alu_wdata_fw_o = mult_result;
-          result_fw_to_x_o       = mult_result;
-        end
-        if (csr_access_i) begin
-          regfile_alu_wdata_fw_o = csr_rdata_i;
-          result_fw_to_x_o       = csr_rdata_i;
+            regfile_alu_waddr_fw_o = regfile_alu_waddr_i;
+            if (alu_en_i) begin
+              regfile_alu_wdata_fw_o = alu_result;
+              result_fw_to_x_o       = alu_result;
+            end
+            if (mult_en_i) begin
+              regfile_alu_wdata_fw_o = mult_result;
+              result_fw_to_x_o       = mult_result;
+            end
+            if (csr_access_i) begin
+              regfile_alu_wdata_fw_o    = csr_rdata_i;
+              result_fw_to_x_o          = csr_rdata_i;
+            end
+          end
         end
       end
     end
-  end
+
+  endgenerate
 
   // LSU write port mux
   always_comb begin
