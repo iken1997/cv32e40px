@@ -114,7 +114,7 @@ module cv32e40px_x_disp
   logic x_illegal_insn_q, x_illegal_insn_n;
 
   // issue interface
-  assign x_issue_valid_o = x_illegal_insn_dec_i & ~branch_or_jump_i & ~instr_offloaded_q & instr_valid_i & ~illegal_forwarding_prevention;
+  assign x_issue_valid_o = x_illegal_insn_dec_i & ~branch_or_jump_i & ~instr_offloaded_q & instr_valid_i /* & ~illegal_forwarding_prevention */;
   assign x_issue_req_id_o = id_q;
 
   generate
@@ -174,6 +174,7 @@ module cv32e40px_x_disp
   assign outstanding_mem = data_req_dec_i & (mem_counter_q != '0);
   assign x_if_memory_instr = x_mem_data_req_o & ~(x_issue_valid_o & x_issue_ready_i);
   assign x_if_not_ready = x_issue_valid_o & ~x_issue_ready_i;
+
 
   assign illegal_forwarding_prevention = x_result_valid_i & (|x_ex_fwd_o);
 
